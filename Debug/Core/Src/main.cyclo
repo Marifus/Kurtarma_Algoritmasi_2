@@ -1,0 +1,9 @@
+../Core/Src/main.c:61:6:VerileriGuncelle	1
+../Core/Src/main.c:67:7:IrtifaHesapla	2
+../Core/Src/main.c:90:5:main	1
+../Core/Src/main.c:148:6:SystemClock_Config	3
+../Core/Src/main.c:190:13:MX_I2C1_Init	2
+../Core/Src/main.c:224:13:MX_TIM6_Init	3
+../Core/Src/main.c:262:13:MX_USART2_UART_Init	2
+../Core/Src/main.c:295:13:MX_GPIO_Init	1
+../Core/Src/main.c:318:6:Error_Handler	1
