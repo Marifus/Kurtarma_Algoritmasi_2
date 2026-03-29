@@ -115,11 +115,17 @@ void DetermineGroundPressure(uint32_t* ground_press, uint32_t counter)
 	*ground_press = (uint32_t)sum / counter;
 }
 
+float LowPassFilter(const float* raw, const float* prev, float lpf_coef)
+{
+	return (lpf_coef*raw + (1-lpf_coef)*prev);
+}
+
 void UpdateSensorData(float* temp, uint32_t* press)
 {
 	*temp = BMP180_GetTemperature();
 	*press = BMP180_GetPressure();
 }
+
 
 /* USER CODE END PFP */
 
@@ -199,6 +205,7 @@ int main(void)
 	  UpdateSensorData(&temperature, &pressure);
 	  current_time_ms = HAL_GetTick();
 	  altitude = CalculateAltitude(&temperature, &pressure, &ground_pressure);
+	  altitude = LowPassFilter(altitude, previous_altitude, 0.2);
 	  velocity = Altitude2Velocity(altitude, current_time_ms);
 
 	  switch (current_status)
@@ -255,6 +262,8 @@ int main(void)
 	  default:
 
 	  }
+
+	  previous_altitude = altitude;
   }
   /* USER CODE END 3 */
 }
