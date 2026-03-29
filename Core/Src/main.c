@@ -66,20 +66,6 @@ static void MX_TIM6_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
-void UpdateSensorData(float* temp, uint32_t* press)
-{
-	*temp = BMP180_GetTemperature();
-	*press = BMP180_GetPressure();
-}
-
-float CalculateAltitude(const float* temp, const uint32_t* press, const uint32_t* ground_press)
-{
-	if(*press == 0) return 0;
-
-	float alt = (powf((*ground_press / (float)*press), 0.190263f) - 1.0f) * (*temp + 273.15f) / 0.0065f;
-	return alt;
-}
-
 float Altitude2Velocity(const float alt, const uint32_t time_ms)
 {
 	static uint32_t prev_ms = 0;
@@ -96,6 +82,14 @@ float Altitude2Velocity(const float alt, const uint32_t time_ms)
 	return delta_alt/delta_time;
 }
 
+float CalculateAltitude(const float* temp, const uint32_t* press, const uint32_t* ground_press)
+{
+	if(*press == 0) return 0;
+
+	float alt = (powf((*ground_press / (float)*press), 0.190263f) - 1.0f) * (*temp + 273.15f) / 0.0065f;
+	return alt;
+}
+
 void DeployDrogueParachute()
 {
 
@@ -104,6 +98,27 @@ void DeployDrogueParachute()
 void DeployMainParachute()
 {
 
+}
+
+void DetermineGroundPressure(uint32_t* ground_press, uint32_t counter)
+{
+	uint32_t press = 0;
+	uint32_t sum = 0;
+	float temp = 0.0f;
+
+	for(int i=0; i<counter; i++)
+	{
+		UpdateSensorData(&temp, &press);
+		sum += press;
+	}
+
+	*ground_press = (uint32_t)sum / counter;
+}
+
+void UpdateSensorData(float* temp, uint32_t* press)
+{
+	*temp = BMP180_GetTemperature();
+	*press = BMP180_GetPressure();
 }
 
 /* USER CODE END PFP */
@@ -117,12 +132,13 @@ char msg[128];
 float altitude = 0.0f;
 float temperature = 0.0f;
 float velocity = 0.0f;
+float previous_altitude = 0.0f;
 
 uint32_t current_time_ms = 0;
 uint32_t ground_pressure = 0;
 uint32_t pressure = 0;
 
-uint16_t counter;
+uint16_t counter = 0;
 
 uint8_t len = 0;
 
@@ -165,12 +181,12 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   BMP180_Init(&hi2c1);
-  BMP180_SetOversampling(BMP180_ULTRA);
+  BMP180_SetOversampling(BMP180_HIGH);
   BMP180_UpdateCalibrationData();
 
   HAL_Delay(100);
-  UpdateSensorData(&temperature, &pressure);
-  ground_pressure = pressure;
+  DetermineGroundPressure(&ground_pressure, 50);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -181,18 +197,14 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  UpdateSensorData(&temperature, &pressure);
-	  altitude = CalculateAltitude(&temperature, &pressure, &ground_pressure);
 	  current_time_ms = HAL_GetTick();
+	  altitude = CalculateAltitude(&temperature, &pressure, &ground_pressure);
 	  velocity = Altitude2Velocity(altitude, current_time_ms);
-	  len = sprintf(msg, "Altitude: %.2f   |   Velocity: %.2f   |   Temperature: %.1f   |   Pressure: %ld\n", altitude, velocity, temperature, pressure);
-	  HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, 100);
-	  HAL_Delay(100);
-
 
 	  switch (current_status)
 	  {
 	  case IDLE:
-		  if(altitude > 15.0f && velocity > 1.0f)
+		  if(altitude > 10.0f && velocity > 1.0f)
 			  current_status = BOOST;
 		  else break;
 
@@ -200,7 +212,7 @@ int main(void)
 		  if(velocity < 0.0f)
 		  {
 			  counter += 1;
-			  if (counter < 5) break;
+			  if (counter < 10) break;
 			  else
 			  {
 				  counter = 0;
@@ -223,11 +235,11 @@ int main(void)
 		  } else break;
 
 	  case MAIN_DESCENT:
-		  if (velocity < 0.1f || velocity < 0.1f)
+		  if ((velocity < 0.1f || velocity < 0.1f) && altitude < 10.0f)
 		  {
 			  counter += 1;
 
-			  if (counter < 5) break;
+			  if (counter < 10) break;
 			  else
 			  {
 				  counter = 0;
@@ -237,8 +249,11 @@ int main(void)
 
 		  break;
 
-	  default:
+	  case LANDED:
 		  //buzzer togglepin
+
+	  default:
+
 	  }
   }
   /* USER CODE END 3 */

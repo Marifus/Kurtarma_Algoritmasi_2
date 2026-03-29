@@ -59,8 +59,8 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 
 /* USER CODE BEGIN Private defines */
-#define APOGEE_ALTITUDE 8000
-#define MAIN_DEPLOY_ALTITUDE 2000
+#define APOGEE_ALTITUDE 8000.0
+#define MAIN_DEPLOY_ALTITUDE 2000.0
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
