@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "bmp180_for_stm32_hal.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -70,6 +70,22 @@ float IrtifaHesapla(const float* temp, const uint32_t* press, const uint32_t* gr
 	float irtifa = (powf((*ground_press / (float)*press), 0.190263f) - 1.0f) * (*temp + 273.15f) / 0.0065f;
 	return irtifa;
 }
+
+float IrtifadanHizHesapla(const float alt, const uint32_t time_ms)
+{
+	static uint32_t prev_ms = 0;
+	static float prev_alt = 0;
+
+	float delta_time = (float)(time_ms - prev_ms) / 1000.0f;
+	float delta_alt = (float)(alt - prev_alt);
+
+	prev_ms = time_ms;
+	prev_alt = alt;
+
+	if (delta_time <= 0) return 0;
+
+	return delta_alt/delta_time;
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -78,6 +94,7 @@ float temperature;
 uint32_t pressure;
 uint32_t ground_pressure;
 float altitude;
+float velocity;
 uint8_t len;
 char msg[128];
 /* USER CODE END 0 */
@@ -133,7 +150,8 @@ int main(void)
     /* USER CODE BEGIN 3 */
 	  VerileriGuncelle(&temperature, &pressure);
 	  altitude = IrtifaHesapla(&temperature, &pressure, &ground_pressure);
-	  len = sprintf(msg, "Altitude: %.2f   |   Temperature: %.1f   |   Pressure: %ld\n", altitude, temperature, pressure);
+	  velocity = IrtifadanHizHesapla(altitude, HAL_GetTick());
+	  len = sprintf(msg, "Altitude: %.2f   |   Velocity: %.2f   |   Temperature: %.1f   |   Pressure: %ld\n", altitude, velocity, temperature, pressure);
 	  HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, 100);
 	  HAL_Delay(100);
   }

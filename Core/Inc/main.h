@@ -59,7 +59,8 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 
 /* USER CODE BEGIN Private defines */
-
+#define APOGEE_ALTIMETER 8000;
+#define SECOND_ALTIMETER 2000;
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
