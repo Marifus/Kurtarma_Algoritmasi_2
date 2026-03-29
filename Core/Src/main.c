@@ -22,11 +22,19 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "bmp180_for_stm32_hal.h"
+#include "stdio.h"
+#include "math.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef enum {
+	IDLE,
+	BOOST,
+	DROGUE_DESCENT,
+	MAIN_DESCENT,
+	LANDED
+} rocket_status;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -57,24 +65,25 @@ static void MX_I2C1_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-void VerileriGuncelle(float* temp, uint32_t* press)
+
+void UpdateSensorData(float* temp, uint32_t* press)
 {
 	*temp = BMP180_GetTemperature();
 	*press = BMP180_GetPressure();
 }
 
-float IrtifaHesapla(const float* temp, const uint32_t* press, const uint32_t* ground_press)
+float CalculateAltitude(const float* temp, const uint32_t* press, const uint32_t* ground_press)
 {
 	if(*press == 0) return 0;
 
-	float irtifa = (powf((*ground_press / (float)*press), 0.190263f) - 1.0f) * (*temp + 273.15f) / 0.0065f;
-	return irtifa;
+	float alt = (powf((*ground_press / (float)*press), 0.190263f) - 1.0f) * (*temp + 273.15f) / 0.0065f;
+	return alt;
 }
 
-float IrtifadanHizHesapla(const float alt, const uint32_t time_ms)
+float Altitude2Velocity(const float alt, const uint32_t time_ms)
 {
 	static uint32_t prev_ms = 0;
-	static float prev_alt = 0;
+	static float prev_alt = 0.0f;
 
 	float delta_time = (float)(time_ms - prev_ms) / 1000.0f;
 	float delta_alt = (float)(alt - prev_alt);
@@ -86,17 +95,40 @@ float IrtifadanHizHesapla(const float alt, const uint32_t time_ms)
 
 	return delta_alt/delta_time;
 }
+
+void DeployDrogueParachute()
+{
+
+}
+
+void DeployMainParachute()
+{
+
+}
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-float temperature;
-uint32_t pressure;
-uint32_t ground_pressure;
-float altitude;
-float velocity;
-uint8_t len;
+
+
 char msg[128];
+
+float altitude = 0.0f;
+float temperature = 0.0f;
+float velocity = 0.0f;
+
+uint32_t current_time_ms = 0;
+uint32_t ground_pressure = 0;
+uint32_t pressure = 0;
+
+uint16_t counter;
+
+uint8_t len = 0;
+
+rocket_status current_status = IDLE;
+
+
 /* USER CODE END 0 */
 
 /**
@@ -137,7 +169,7 @@ int main(void)
   BMP180_UpdateCalibrationData();
 
   HAL_Delay(100);
-  VerileriGuncelle(&temperature, &pressure);
+  UpdateSensorData(&temperature, &pressure);
   ground_pressure = pressure;
   /* USER CODE END 2 */
 
@@ -148,12 +180,66 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  VerileriGuncelle(&temperature, &pressure);
-	  altitude = IrtifaHesapla(&temperature, &pressure, &ground_pressure);
-	  velocity = IrtifadanHizHesapla(altitude, HAL_GetTick());
+	  UpdateSensorData(&temperature, &pressure);
+	  altitude = CalculateAltitude(&temperature, &pressure, &ground_pressure);
+	  current_time_ms = HAL_GetTick();
+	  velocity = Altitude2Velocity(altitude, current_time_ms);
 	  len = sprintf(msg, "Altitude: %.2f   |   Velocity: %.2f   |   Temperature: %.1f   |   Pressure: %ld\n", altitude, velocity, temperature, pressure);
 	  HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, 100);
 	  HAL_Delay(100);
+
+
+	  switch (current_status)
+	  {
+	  case IDLE:
+		  if(altitude > 15.0f && velocity > 1.0f)
+			  current_status = BOOST;
+		  else break;
+
+	  case BOOST:
+		  if(velocity < 0.0f)
+		  {
+			  counter += 1;
+			  if (counter < 5) break;
+			  else
+			  {
+				  counter = 0;
+				  DeployDrogueParachute();
+				  current_status = DROGUE_DESCENT;
+			  }
+		  }
+
+		  else
+		  {
+			  counter = 0;
+			  break;
+		  }
+
+	  case DROGUE_DESCENT:
+		  if (altitude < MAIN_DEPLOY_ALTITUDE)
+		  {
+			  DeployMainParachute();
+			  current_status = MAIN_DESCENT;
+		  } else break;
+
+	  case MAIN_DESCENT:
+		  if (velocity < 0.1f || velocity < 0.1f)
+		  {
+			  counter += 1;
+
+			  if (counter < 5) break;
+			  else
+			  {
+				  counter = 0;
+				  current_status = LANDED;
+			  }
+		  }
+
+		  break;
+
+	  default:
+		  //buzzer togglepin
+	  }
   }
   /* USER CODE END 3 */
 }
