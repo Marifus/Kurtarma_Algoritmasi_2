@@ -31,6 +31,7 @@
 typedef enum {
 	IDLE,
 	BOOST,
+	BURNOUT,
 	DROGUE_DESCENT,
 	MAIN_DESCENT,
 	LANDED
@@ -66,21 +67,6 @@ static void MX_TIM6_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
-float Altitude2Velocity(const float alt, const uint32_t time_ms)
-{
-	static uint32_t prev_ms = 0;
-	static float prev_alt = 0.0f;
-
-	float delta_time = (float)(time_ms - prev_ms) / 1000.0f;
-	float delta_alt = (float)(alt - prev_alt);
-
-	prev_ms = time_ms;
-	prev_alt = alt;
-
-	if (delta_time <= 0) return 0;
-
-	return delta_alt/delta_time;
-}
 
 float CalculateAltitude(const float* temp, const uint32_t* press, const uint32_t* ground_press)
 {
@@ -110,9 +96,20 @@ void DetermineGroundPressure(uint32_t* ground_press, uint32_t counter)
 	{
 		UpdateSensorData(&temp, &press);
 		sum += press;
+		HAL_Delay(15);
 	}
 
 	*ground_press = (uint32_t)sum / counter;
+}
+
+float GetDerivative(const float* current_value, const uint32_t* current_time_ms, const float* prev_value, const uint32_t* prev_time_ms)
+{
+	float delta_time = (*current_time_ms - *prev_time_ms) / 1000.0f;
+	float delta_value = *current_value - prev_value;
+
+	if (delta_time <= 0) return 0;
+
+	return delta_alt/delta_time;
 }
 
 float LowPassFilter(const float* raw, const float* prev, float lpf_coef)
@@ -135,14 +132,17 @@ void UpdateSensorData(float* temp, uint32_t* press)
 
 char msg[128];
 
+float acceleration = 0.0f;
 float altitude = 0.0f;
 float temperature = 0.0f;
 float velocity = 0.0f;
 float previous_altitude = 0.0f;
+float previous_velocity = 0.0f;
 
 uint32_t current_time_ms = 0;
 uint32_t ground_pressure = 0;
 uint32_t pressure = 0;
+uint32_t previous_ms = 0;
 
 uint16_t counter = 0;
 
@@ -191,7 +191,7 @@ int main(void)
   BMP180_UpdateCalibrationData();
 
   HAL_Delay(100);
-  DetermineGroundPressure(&ground_pressure, 50);
+  DetermineGroundPressure(&ground_pressure, 20);
 
   /* USER CODE END 2 */
 
@@ -206,7 +206,8 @@ int main(void)
 	  current_time_ms = HAL_GetTick();
 	  altitude = CalculateAltitude(&temperature, &pressure, &ground_pressure);
 	  altitude = LowPassFilter(altitude, previous_altitude, 0.2);
-	  velocity = Altitude2Velocity(altitude, current_time_ms);
+	  velocity = GetDerivative(altitude, current_time_ms, previous_altitude, previous_ms);
+	  acceleration = GetDerivative(velocity, current_time_ms, previous_velocity, previous_ms);
 
 	  switch (current_status)
 	  {
@@ -216,6 +217,24 @@ int main(void)
 		  else break;
 
 	  case BOOST:
+		  if(acceleration < 0.0f)
+		  {
+			  counter += 1;
+			  if (counter < 10) break;
+			  else
+			  {
+				  counter = 0;
+				  current_status = BURNOUT;
+			  }
+		  }
+
+		  else
+		  {
+			  counter = 0;
+			  break;
+		  }
+
+	  case BURNOUT:
 		  if(velocity < 0.0f)
 		  {
 			  counter += 1;
@@ -264,6 +283,8 @@ int main(void)
 	  }
 
 	  previous_altitude = altitude;
+	  previous_ms = current_time_ms;
+	  previous_velocity = velocity;
   }
   /* USER CODE END 3 */
 }
