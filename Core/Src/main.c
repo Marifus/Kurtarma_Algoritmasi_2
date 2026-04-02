@@ -85,6 +85,7 @@ void DeployDrogueParachute()
 void DeployMainParachute()
 {
 	//İkinci paraşütü açan fonksiyon
+	HAL_GPIO_WritePin(MAIN_PARACHUTE_GPIO_Port, MAIN_PARACHUTE_Pin, 1);
 }
 
 void DetermineGroundPressure(uint32_t* ground_press, uint32_t counter) //Referans basıncını almak için fonksiyon
@@ -211,10 +212,13 @@ int main(void)
 	  velocity = GetDerivative(&altitude, &current_time_ms, &previous_altitude, &previous_ms); //irtifanın türeviyle hız hesaplama.
 	  acceleration = GetDerivative(&velocity, &current_time_ms, &previous_velocity, &previous_ms); //hızın türeviyle ivme hesaplama.
 
+//	  len = sprintf(msg, "Hiz: %.2f   |   Irtifa: %.2f   |   Basinc: %d\n", velocity, altitude, pressure);
+//	  HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, 100);
+
 	  switch (current_status) //mevcut aşamaya bağlı istenilen satıra atlar.
 	  {
 	  case IDLE: //roketin rampada olduğu an.
-		  if(altitude > 10.0f && velocity > 1.0f) //10 metre yükselmiş ve hız 1 m/s olmuşsa sonraki aşamaya geç.
+		  if(altitude > 100.0f && velocity > 1.0f) //100 metre yükselmiş ve hız 1 m/s olmuşsa sonraki aşamaya geç.
 			  current_status = BOOST;
 		  else break;
 
@@ -222,7 +226,7 @@ int main(void)
 		  if(acceleration < -9.6f) // İvme yerçekimi ivmesine eşitlenirse roketin yakıtı bitmiş demektir (0.21f hata payı)
 		  {
 			  counter += 1;
-			  if (counter < 10) break;
+			  if (counter < 5) break;
 			  else
 			  {
 				  counter = 0;
@@ -240,7 +244,7 @@ int main(void)
 		  if(velocity < 0.0f) // Hız aşağı yönlüyse roket düşüyordur. Sürüklenme paraşütünü aç.
 		  {
 			  counter += 1;
-			  if (counter < 10) break;
+			  if (counter < 5) break;
 			  else
 			  {
 				  counter = 0;
@@ -258,16 +262,28 @@ int main(void)
 	  case DROGUE_DESCENT:
 		  if (altitude < MAIN_DEPLOY_ALTITUDE) // Roket ana paraşüt ateşlenmesi için belirlenen irtifanın altındaysa ana paraşütü aç.
 		  {
-			  DeployMainParachute();
-			  current_status = MAIN_DESCENT;
-		  } else break;
+			  counter += 1;
+			  if (counter < 5) break;
+			  else
+			  {
+				  counter = 0;
+				  DeployMainParachute();
+				  current_status = MAIN_DESCENT;
+			  }
+		  }
+
+		  else
+		  {
+			  counter = 0;
+			  break;
+		  }
 
 	  case MAIN_DESCENT:
-		  if (!(velocity < -0.1f || velocity > 0.1f) && altitude < 10.0f) // Hız 0 ve irtifa 10'un altındaysa roket yere düşmüştür.
+		  if (!(velocity < -1.0f || velocity > 1.0f) && altitude < 100.0f) // Hız 0 ve irtifa 10'un altındaysa roket yere düşmüştür.
 		  {
 			  counter += 1;
 
-			  if (counter < 10) break;
+			  if (counter < 5) break;
 			  else
 			  {
 				  counter = 0;
@@ -288,6 +304,8 @@ int main(void)
 	  previous_altitude = altitude;
 	  previous_ms = current_time_ms;
 	  previous_velocity = velocity;
+
+	  HAL_Delay(50);
   }
   /* USER CODE END 3 */
 }
@@ -456,14 +474,14 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(DROGUE_PARACHUTE_GPIO_Port, DROGUE_PARACHUTE_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, MAIN_PARACHUTE_Pin|DROGUE_PARACHUTE_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : DROGUE_PARACHUTE_Pin */
-  GPIO_InitStruct.Pin = DROGUE_PARACHUTE_Pin;
+  /*Configure GPIO pins : MAIN_PARACHUTE_Pin DROGUE_PARACHUTE_Pin */
+  GPIO_InitStruct.Pin = MAIN_PARACHUTE_Pin|DROGUE_PARACHUTE_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(DROGUE_PARACHUTE_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

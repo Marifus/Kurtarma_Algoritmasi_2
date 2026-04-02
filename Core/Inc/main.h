@@ -57,6 +57,8 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define MAIN_PARACHUTE_Pin GPIO_PIN_4
+#define MAIN_PARACHUTE_GPIO_Port GPIOB
 #define DROGUE_PARACHUTE_Pin GPIO_PIN_5
 #define DROGUE_PARACHUTE_GPIO_Port GPIOB
 
