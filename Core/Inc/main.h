@@ -57,6 +57,8 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define DROGUE_PARACHUTE_Pin GPIO_PIN_5
+#define DROGUE_PARACHUTE_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 #define APOGEE_ALTITUDE 8000.0
