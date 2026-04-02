@@ -68,9 +68,9 @@ static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 
-float CalculateAltitude(const float* temp, const uint32_t* press, const uint32_t* ground_press)
+float CalculateAltitude(const float* temp, const uint32_t* press, const uint32_t* ground_press) //irtifa hesaplayan fonksiyon
 {
-	if(*press == 0) return 0;
+	if(*press == 0) return 0; // Sıfıra bölmemek için koruma.
 
 	float alt = (powf((*ground_press / (float)*press), 0.190263f) - 1.0f) * (*temp + 273.15f) / 0.0065f;
 	return alt;
@@ -78,46 +78,46 @@ float CalculateAltitude(const float* temp, const uint32_t* press, const uint32_t
 
 void DeployDrogueParachute()
 {
-
+	//İlk paraşütü açan fonksiyon
 }
 
 void DeployMainParachute()
 {
-
+	//İkinci paraşütü açan fonksiyon
 }
 
-void DetermineGroundPressure(uint32_t* ground_press, uint32_t counter)
+void DetermineGroundPressure(uint32_t* ground_press, uint32_t counter) //Referans basıncını almak için fonksiyon
 {
 	uint32_t press = 0;
 	uint32_t sum = 0;
-	float temp = 0.0f;
+	float temp = 0.0f; //temp değerini kullanmıyoruz ama UpdateSensorData() fonksiyonunu nullptr ile çalışacak şekilde güncellemeye üşendim.
 
 	for(int i=0; i<counter; i++)
 	{
 		UpdateSensorData(&temp, &press);
 		sum += press;
-		HAL_Delay(15);
+		HAL_Delay(15); //Sensör verisi 13.5 ms'de bir güncelleniyor ve bunun için bekliyoruz.
 	}
 
 	*ground_press = (uint32_t)sum / counter;
 }
 
-float GetDerivative(const float* current_value, const uint32_t* current_time_ms, const float* prev_value, const uint32_t* prev_time_ms)
+float GetDerivative(const float* current_value, const uint32_t* current_time_ms, const float* prev_value, const uint32_t* prev_time_ms) //İRtifadan hıza, hızdan ivmeye geçmek için türev hesaplama fonksiyonu
 {
-	float delta_time = (*current_time_ms - *prev_time_ms) / 1000.0f;
-	float delta_value = *current_value - prev_value;
+	float delta_time = (*current_time_ms - *prev_time_ms) / 1000.0f; //iki sensör verisinin alındığı zaman arasındaki fark
+	float delta_value = *current_value - *prev_value; //iki sensör verisi arasındaki fark
 
-	if (delta_time <= 0) return 0;
+	if (delta_time <= 0.0) return 0.0f; // Sıfıra bölmemek veya delta_time'dan kaynaklanan bir hatayla negatif hız değeri almamak için koruma..
 
-	return delta_alt/delta_time;
+	return delta_value/delta_time;
 }
 
-float LowPassFilter(const float* raw, const float* prev, float lpf_coef)
+float LowPassFilter(const float* raw, const float* prev, float lpf_coef) //Filtre fonksiyonu
 {
-	return (lpf_coef*raw + (1-lpf_coef)*prev);
+	return (lpf_coef*(*raw) + (1-lpf_coef)*(*prev));
 }
 
-void UpdateSensorData(float* temp, uint32_t* press)
+void UpdateSensorData(float* temp, uint32_t* press) //sensör verilerine göre değişkenleri güncelleme fonksiyonu
 {
 	*temp = BMP180_GetTemperature();
 	*press = BMP180_GetPressure();
@@ -134,6 +134,7 @@ char msg[128];
 
 float acceleration = 0.0f;
 float altitude = 0.0f;
+float raw_altitude = 0.0f;
 float temperature = 0.0f;
 float velocity = 0.0f;
 float previous_altitude = 0.0f;
@@ -190,8 +191,8 @@ int main(void)
   BMP180_SetOversampling(BMP180_HIGH);
   BMP180_UpdateCalibrationData();
 
-  HAL_Delay(100);
-  DetermineGroundPressure(&ground_pressure, 20);
+  HAL_Delay(100); //Sensörün kalibre olması için bekliyoruz.
+  DetermineGroundPressure(&ground_pressure, 20); //Referans basıncını hesaplamak için 20 ölçümün ortalamasını alıyoruz.
 
   /* USER CODE END 2 */
 
@@ -202,22 +203,22 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  UpdateSensorData(&temperature, &pressure);
-	  current_time_ms = HAL_GetTick();
-	  altitude = CalculateAltitude(&temperature, &pressure, &ground_pressure);
-	  altitude = LowPassFilter(altitude, previous_altitude, 0.2);
-	  velocity = GetDerivative(altitude, current_time_ms, previous_altitude, previous_ms);
-	  acceleration = GetDerivative(velocity, current_time_ms, previous_velocity, previous_ms);
+	  UpdateSensorData(&temperature, &pressure); //sensör verisi ile değişkenleri güncelliyoruz.
+	  current_time_ms = HAL_GetTick(); //değişkenlerin güncellendiği anı alıyoruz. Direkt UpdateSensorData() fonksiyonunda belirlemeyi düşündüm ama fonksiyonun esnek kalmasını istedim.
+	  raw_altitude = CalculateAltitude(&temperature, &pressure, &ground_pressure); //ham irtifa verisi hesaplama.
+	  altitude = LowPassFilter(&raw_altitude, &previous_altitude, 0.2); //irtifa verisini filtreden geçiriyoruz.
+	  velocity = GetDerivative(&altitude, &current_time_ms, &previous_altitude, &previous_ms); //irtifanın türeviyle hız hesaplama.
+	  acceleration = GetDerivative(&velocity, &current_time_ms, &previous_velocity, &previous_ms); //hızın türeviyle ivme hesaplama.
 
-	  switch (current_status)
+	  switch (current_status) //mevcut aşamaya bağlı istenilen satıra atlar.
 	  {
-	  case IDLE:
-		  if(altitude > 10.0f && velocity > 1.0f)
+	  case IDLE: //roketin rampada olduğu an.
+		  if(altitude > 10.0f && velocity > 1.0f) //10 metre yükselmiş ve hız 1 m/s olmuşsa sonraki aşamaya geç.
 			  current_status = BOOST;
 		  else break;
 
 	  case BOOST:
-		  if(acceleration < 0.0f)
+		  if(acceleration < -9.6f) // İvme yerçekimi ivmesine eşitlenirse roketin yakıtı bitmiş demektir (0.21f hata payı)
 		  {
 			  counter += 1;
 			  if (counter < 10) break;
@@ -235,7 +236,7 @@ int main(void)
 		  }
 
 	  case BURNOUT:
-		  if(velocity < 0.0f)
+		  if(velocity < 0.0f) // Hız aşağı yönlüyse roket düşüyordur. Sürüklenme paraşütünü aç.
 		  {
 			  counter += 1;
 			  if (counter < 10) break;
@@ -254,14 +255,14 @@ int main(void)
 		  }
 
 	  case DROGUE_DESCENT:
-		  if (altitude < MAIN_DEPLOY_ALTITUDE)
+		  if (altitude < MAIN_DEPLOY_ALTITUDE) // Roket ana paraşüt ateşlenmesi için belirlenen irtifanın altındaysa ana paraşütü aç.
 		  {
 			  DeployMainParachute();
 			  current_status = MAIN_DESCENT;
 		  } else break;
 
 	  case MAIN_DESCENT:
-		  if ((velocity < 0.1f || velocity < 0.1f) && altitude < 10.0f)
+		  if (!(velocity < -0.1f || velocity > 0.1f) && altitude < 10.0f) // Hız 0 ve irtifa 10'un altındaysa roket yere düşmüştür.
 		  {
 			  counter += 1;
 
@@ -282,6 +283,7 @@ int main(void)
 
 	  }
 
+	  //Kullanılan değerlerin daha sonra türev almak için kaydedilmesi.
 	  previous_altitude = altitude;
 	  previous_ms = current_time_ms;
 	  previous_velocity = velocity;
